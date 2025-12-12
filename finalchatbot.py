@@ -114,9 +114,16 @@ div[data-testid="stTextInput"] > div {
 
 # HELPER FUNCTIONS AND LANGCHAIN PIPELINE
 
+@st.cache_resource(show_spinner=False)   # CRITICAL CHANGE: Cache the RAG components
+
 def setup_rag_components():
-    """Initializes embeddings, Chroma retriever, and the LLM."""
+    """
+    Initializes embeddings, Chroma retriever, and the LLM.
+    This function will now run only once per deployed app, 
+    significantly reducing latency on subsequent requests.
+    """
     try:
+        # These operations are slow and are now safely cached.
         embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
         db = Chroma(persist_directory=VECTOR_DB_PATH, embedding_function=embeddings)
         retriever = db.as_retriever(search_kwargs={"k": RAG_K_DOCS})
@@ -135,6 +142,8 @@ def format_docs(docs):
     """Formats retrieved documents for the RAG context."""
     return "\n\n".join(d.page_content for d in docs)
 
+# Note: st.cache_data is not used here because the summary depends on session state,
+# but using the cached `model` object still makes the function more efficient.
 def update_summary(old_summary, new_interaction, llm):
     """Updates the conversation summary for context in the next turn."""
     s_prompt = ChatPromptTemplate.from_template("""
@@ -150,7 +159,8 @@ def update_summary(old_summary, new_interaction, llm):
     try:
         return chain.invoke({"old": old_summary, "new": new_interaction})
     except Exception as e:
-        st.error(f"Error updating summary: {e}")
+        # In case of an error, just return the old summary to prevent a crash
+        st.warning(f"Error updating summary, maintaining old context: {e}")
         return old_summary
 
 def create_rag_chain(llm):
@@ -231,10 +241,12 @@ if not st.session_state.started:
 # MAIN CHAT INTERFACE 
 
 # Setup RAG components once the user has started
-retriever, model = setup_rag_components()
+# This line now calls the CACHED function, which is fast on subsequent runs!
+retriever, model = setup_rag_components() 
 rag_chain = create_rag_chain(model)
 
 def render_chat_header():
+    # ... (Header rendering logic remains the same) ...
     """Renders the main chat header with logo and welcome message, with black text."""
     col1, col2 = st.columns([1, 6])
     
@@ -300,7 +312,6 @@ if query:
     timestamp = datetime.now().strftime("%H:%M")
 
     # 1. Immediately render the User's message (optional, but makes it snappier)
-    # We write the user message to the main script context, which appears below the history container
     render_message(
         is_user=True, 
         content=f"**{st.session_state.username}:** {query}", 
@@ -319,7 +330,8 @@ if query:
     time.sleep(random.uniform(0.5, 1.0))
 
     # 3. RAG/LLM Processing
-    docs = retriever.invoke(query)
+    # This is fast because `retriever` was loaded from the cache
+    docs = retriever.invoke(query) 
     context_text = format_docs(docs)
     
     # Run the RAG chain
@@ -352,7 +364,7 @@ if query:
     try:
         st.session_state.summary = update_summary(st.session_state.summary, new_entry, model)
     except:
-        pass 
+        pass # If summary update fails, we still have the main chat history.
 
     # Append to history for the next script run
     st.session_state.history.append({
@@ -360,7 +372,3 @@ if query:
         "answer": answer,
         "time": timestamp
     })
-
-    # Note: Streamlit will automatically rerun upon new user input, 
-    # full history will be correctly rendered by `chat_history_container` 
-    # on that next run. For the current interaction, we rely on the in-place rendering.
