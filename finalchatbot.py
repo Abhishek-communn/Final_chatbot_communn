@@ -295,12 +295,12 @@ with chat_history_container:
     for chat in st.session_state.history:
         render_message(
             is_user=True, 
-            content=f"**{st.session_state.username}:** {chat['question']}", 
+            content=f"{st.session_state.username}: {chat['question']}", 
             timestamp=chat['time']
         )
         render_message(
             is_user=False, 
-            content=f"**Bot:** {chat['answer']}", 
+            content=f"Bot: {chat['answer']}", 
             timestamp=chat['time']
         )
 
@@ -314,7 +314,7 @@ if query:
     # 1. Immediately render the User's message (optional, but makes it snappier)
     render_message(
         is_user=True, 
-        content=f"**{st.session_state.username}:** {query}", 
+        content=f"{st.session_state.username}: {query}", 
         timestamp=timestamp
     )
     
@@ -353,7 +353,7 @@ if query:
     # 5. Render the Bot's answer directly (avoids rerun)
     render_message(
         is_user=False, 
-        content=f"**Bot:** {answer}", 
+        content=f"Bot: {answer}", 
         timestamp=timestamp
     )
 
